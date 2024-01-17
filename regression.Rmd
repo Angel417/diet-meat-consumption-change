@@ -1,0 +1,295 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+LOAD LIBRARIES, DATA SET
+```{r}
+# Install new packages
+install.packages("jtools")
+install.packages("margins")
+install.packages("ggfortify")
+install.packages("stargazer")
+install.packages("modelsummary")
+
+# Load in libraries
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(corrplot)
+library(formattable)
+library(jtools) # Summarizing regression output, effect_plot
+library(broom) # Tidying and augmenting model output
+library(margins) # Marginal effects
+library(ggfortify)
+library(stargazer)
+library(modelsummary)
+
+# Load in data set
+df2 <- read_csv("country_final.csv")
+```
+
+REGRESSION - FLEX AS IV
+```{r}
+# DV - meat consumption change
+df %>%
+  lm(meat_pct_change ~ yes_flex + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> flex_meat
+
+
+# DV - meat consumption change with moderation (Hofstede IDV)
+df %>%
+  lm(meat_pct_change ~ yes_flex * IDV_class + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> flex_meat_mod_idv
+
+
+# DV - meat consumption change with moderation (Hofstede UAI)
+df %>%
+  lm(meat_pct_change ~ yes_flex * UAI_class + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> flex_meat_mod_uai
+
+
+# DV - meat consumption change with moderation (Hofstede LTO as categories)***
+flex_meat_mod_lto <- lm(meat_pct_change ~ yes_flex * LTO_class + yes_reduce_carbon + Population + gdp_usd, data = df)
+
+
+# DV - vegetarian pop change
+df %>%
+  lm(veg_pct_pop_change ~ yes_flex + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> flex_veg
+
+
+# DV - vegetarian population change with moderator (Hofstede IDV)***
+flex_veg_mod_idv <- lm(veg_pct_pop_change ~ yes_flex * IDV_class + yes_reduce_carbon + Population + gdp_usd, data = df)
+
+
+# DV - vegetarian population change with moderation (Hofstede UAI)
+df %>%
+  lm(veg_pct_pop_change ~ yes_flex * UAI_class + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> flex_veg_mod_uai
+
+
+# DV - vegetarian population change with moderation (Hofstede LTO)
+df %>%
+  lm(veg_pct_pop_change ~ yes_flex * LTO_class + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> flex_veg_mod_lto
+
+
+# DV - processed meat consumption change***
+flex_processed <- lm(processed_pct_change ~ yes_flex + yes_reduce_carbon + Population + gdp_usd, data = df)
+
+
+```
+
+REGRESSION - HOFSTEDE IDV AS IV
+```{r}
+# DV - meat consumption change (IDV as category)***
+df %>%
+  lm(meat_pct_change ~ IDV_class + yes_reduce_carbon + Population, data = .) %>%
+  summ(digits = 3)
+
+
+# DV - meat consumption change (GDP numerical as moderator)***
+idv_meat_mod_gdp <- lm(meat_pct_change ~ IDV_class * log(gdp_usd) + yes_reduce_carbon + Population, data = df)
+  
+  
+# DV - vegetarian population change***
+idv_veg <- lm(veg_pct_pop_change ~ Hofstede_IDV + yes_reduce_carbon + Population, data = df)
+
+
+# DV - vegetarian population change (GDP numerical as moderator)***
+idv_veg_mod_gdp <- lm(veg_pct_pop_change ~ Hofstede_IDV * gdp_usd + yes_reduce_carbon + Population, data = df)
+
+
+# DV - processed meat consumption change
+df %>%
+  lm(processed_pct_change ~ Hofstede_IDV + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> idv_processed
+
+
+# DV - flexitarian 
+df %>%
+  lm(yes_flex ~ Hofstede_IDV + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> idv_flex
+
+```
+
+REGRESSION - HOFSTEDE UAI AS IV
+```{r}
+# DV - meat consumption change (UAI as category)***
+uai_meat <- lm(meat_pct_change ~ UAI_class + yes_reduce_carbon + Population + gdp_usd, data = df)
+
+
+# DV - vegetarian population change
+df %>%
+  lm(veg_pct_pop_change ~ Hofstede_UAI + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> uai_veg
+
+
+# DV - processed meat consumption change
+df %>%
+  lm(processed_pct_change ~ Hofstede_UAI + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> uai_processed
+
+
+# DV - flexitarian 
+df %>%
+  lm(yes_flex ~ Hofstede_UAI + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> uai_flex
+
+```
+
+REGRESSION - HOFSTEDE LTO AS IV
+```{r}
+# DV - meat consumption change
+df %>%
+  lm(meat_pct_change ~ Hofstede_LTO + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> lto_meat
+
+
+# DV - vegetarian population change
+df %>%
+  lm(veg_pct_pop_change ~ Hofstede_LTO + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> lto_veg
+
+
+# DV - processed meat consumption change
+df %>%
+  lm(processed_pct_change ~ Hofstede_LTO + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> lto_processed
+
+
+# DV - flexitarian 
+df %>%
+  lm(yes_flex ~ Hofstede_LTO + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> lto_flex
+
+```
+
+REGRESSION - DPI CHANGE AS IV
+```{r}
+# DV - vegetarian population change***
+dpi_veg <- lm(veg_pct_pop_change ~ DPI_pct_change + yes_reduce_carbon + Population, data = df)
+
+
+# DV - meat consumption change
+df %>%
+  lm(meat_pct_change ~ DPI_pct_change + yes_reduce_carbon + Population, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> dpi_meat
+```
+
+REGRESSION - GDP LEVEL AS IV
+```{r}
+# DV - meat consumption change
+df %>%
+  lm(meat_pct_change ~ gdp_level + yes_reduce_carbon + Population, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> gdp_meat
+
+
+# DV - vegetarian population change
+df %>%
+  lm(veg_pct_pop_change ~ gdp_level + yes_reduce_carbon + Population, data = .) %>%
+  summ(digits = 3) %>%
+  {.} -> gdp_veg
+```
+
+MAKE REGRESSION OUTPUT TABLES (MOST SIGNIFICANT RESULTS)
+```{r}
+# flex as IV, meat as DV, LTO as moderator
+stargazer(flex_meat_mod_lto, type = "html", out = "flex_meat_mod_lto.html")
+
+# flex as IV, veg as DV, IDV as moderator
+stargazer(flex_veg_mod_idv, type = "html", out = "flex_veg_mod_idv.html")
+
+# flex as IV, processed as DV
+stargazer(flex_processed, type = "html", out = "flex_processed.html")
+
+# IDV (high-low) as IV, meat as DV
+stargazer(idv_level_meat, type = "html", out = "idv_level_meat.html")
+
+# IDV as IV, meat as DV, GDP as moderator
+stargazer(idv_meat_mod_gdp, type = "html", out = "idv_meat_mod_gdp.html")
+
+# IDV as IV, veg as DV
+stargazer(idv_veg, type = "html", out = "idv_veg.html")
+
+# IDV as IV, veg as DV, GDP as moderator
+stargazer(idv_veg_mod_gdp, type = "html", out = "idv_veg_mod_gdp.html")
+
+# UAI as IV, meat as DV
+stargazer(uai_meat, type = "html", out = "uai_meat.html")
+
+# DPI change as IV, veg as DV
+stargazer(dpi_veg, type = "html", out = "dpi_veg.html")
+```
+
+
+```{r}
+modelsummary(idv_veg_reg,
+             output = "regression_idv_veg.html",
+             statistic = "({std.error}) [{conf.low},{conf.high}]",
+             stars = TRUE,
+             title = "TABLE 1: REGRESSIONS of Hofstede_IDV on Pct. Change of Vegetarians")
+
+modelsummary(flex_meat_lto,
+             output = "regression_flex_meat.html",
+             statistic = "({std.error}) [{conf.low},{conf.high}]",
+             stars = TRUE,
+             title = "TABLE 2: REGRESSIONS of Hofstede_LTO on Meat Consumption Change")
+
+
+modelsummary(idv_veg,
+             output = "regression_idv_veg_score.html",
+             statistic = "({std.error}) [{conf.low},{conf.high}]",
+             stars = TRUE,
+             title = "TABLE 3: REGRESSIONS of Hofstede_IDV (Scores) on Pct. Change of Vegetarians")
+
+```
+
+FINAL CHOSEN REGRESSIONS FOR REPORT
+```{r}
+# Model 1 -- IDV (high-low) ---> veg; controls: carbon, population, GDP (numerical)
+idv_veg_reg <- lm(veg_pct_pop_change ~ IDV_class + yes_reduce_carbon + Population + gdp_usd, data = df)
+
+df2 %>%
+  lm(veg_pct_pop_change ~ IDV_class + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  {.} -> idv_veg_reg
+
+# Model 2 -- flex ---> meat; moderator: LTO (high-low); controls: carbon, population, GDP (numerical)
+flex_meat_lto <- lm(meat_pct_change ~ yes_flex * LTO_class + yes_reduce_carbon + Population + gdp_usd, data = df)
+
+df2 %>%
+  lm(meat_pct_change ~ yes_flex * LTO_class + yes_reduce_carbon + Population + gdp_usd, data = .) %>%
+  {.} -> flex_meat_lto
+
+
+# Multicollinearity check
+vif(idv_veg_reg)
+vif(flex_meat_lto)
+
+
+# Output regression tables
+stargazer(idv_veg_reg, type = "html", out = "idv_veg.html")
+stargazer(flex_meat_lto, type = "html", out = "flex_meat_lto.html")
+
+
+
+```
+
