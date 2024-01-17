@@ -1,0 +1,721 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+LOAD LIBRARIES, DATA SET
+```{r}
+# Install packages
+install.packages("arules")
+install.packages("knitr")
+
+# Load in libraries
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(skimr)
+library(psych)
+library(Hmisc)
+library(corrplot)
+library(naniar)
+library(GGally)
+library(janitor)
+library(arules)
+library(formattable)
+library(knitr)
+
+# Load in data set
+countries <- read_csv("countries_clean.csv")
+
+# Rename error in column name
+countries %>% rename("veg_pop_2021" = "veg_pop_20201") -> countries
+
+```
+
+DESCRIPTIVE STATISTICS & HISTOGRAMS
+```{r}
+# Summaries of basic descriptives of numeric data
+countries %>% psych::describe()
+
+# Intentions - flexitarian, carbon emissions
+hist(countries$yes_flex)
+hist(countries$no_flex)
+
+hist(countries$yes_reduce_carbon)
+hist(countries$no_reduce_carbon)
+
+# Behavior - meat consumption, veg population
+hist(countries$meat_2020)
+hist(countries$meat_2021)
+
+hist(countries$veg_pop_2020)
+hist(countries$veg_pop_2021)
+
+# Expenditure on meat
+hist(countries$expense_meat_2020)
+hist(countries$expense_meat_2021)
+
+```
+
+COMPARISONS ACROSS YEARS
+```{r}
+# Bar charts - meat consumption
+countries %>%
+  select(
+    meat_2020,
+    meat_2021,
+    processed_meat_2020,
+    processed_meat_2021
+  ) %>%
+  summarise_all(mean, na.rm = T) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "average_value") %>%
+  ggplot(aes(x = variable, y = average_value)) + geom_bar(stat = "identity")
+
+# Bar charts - meat consumption
+countries %>%
+  select(
+    veg_pop_2020,
+    veg_pop_2021
+  ) %>%
+  summarise_all(mean, na.rm = T) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "average_value") %>%
+  ggplot(aes(x = variable, y = average_value)) + geom_bar(stat = "identity")
+
+# Bar charts - DPI, meat expenditure
+countries %>%
+  select(
+    expense_meat_2020,
+    expense_meat_2021,
+    disposable_income_2020,
+    disposable_income_2021
+  ) %>%
+  summarise_all(mean, na.rm = T) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "average_value") %>%
+  ggplot(aes(x = variable, y = average_value)) + geom_bar(stat = "identity")
+
+```
+
+T-TESTS
+```{r}
+# Behavior - meat consumption, veg population
+t.test(countries$meat_2020, countries$meat_2021)
+t.test(countries$veg_pop_2020, countries$veg_pop_2021)
+t.test(countries$expense_meat_2020, countries$expense_meat_2021)
+
+```
+
+
+DATA TRANSFORMATION - MEAT CONSUMPTION
+```{r}
+# Per inhabitant
+## Meat consumption, processed meat consumption
+countries %>%
+  mutate(
+    meat_2020 = meat_2020 / Population,
+    meat_2021 = meat_2021 / Population,
+    processed_meat_2020 = processed_meat_2020 / Population,
+    processed_meat_2021 = processed_meat_2021 / Population
+  ) -> countries
+
+
+# Percentage increase from previous year
+## Meat consumption
+countries %>%
+  mutate(
+    meat_pct_change = ((meat_2021 - meat_2020) / meat_2020) * 100,
+    processed_pct_change = ((processed_meat_2021 - processed_meat_2020) / processed_meat_2020) * 100,
+    DPI_pct_change = ((disposable_income_2021 - disposable_income_2020) / disposable_income_2020) * 100,
+    veg_pct_change = ((veg_pop_2021 - veg_pop_2020) / veg_pop_2020) * 100
+  ) -> countries
+
+```
+
+DATA TRANSFORMATION - VEGETARIANS
+```{r}
+# Create new variables to represent percentage of population who are vegetarians
+countries %>%
+  mutate(
+    veg_pct_pop_2020 = (veg_pop_2020 / Population) * 100,
+    veg_pct_pop_2021 = (veg_pop_2021 / Population) * 100
+  ) -> countries
+
+# Create new variable to represent percentage change (2020-2021) in % of population who are vegetarians
+countries %>%
+  mutate(
+    veg_pct_pop_change = ((veg_pct_pop_2021 - veg_pct_pop_2020) / veg_pct_pop_2020) * 100
+  ) -> countries
+
+```
+
+DATA TRANSFORMATION - POPULATION
+```{r}
+# Transform population into thousands
+countries %>%
+  mutate(
+    Population = Population / 1000
+  ) -> countries
+
+```
+
+DATA TRANSFORMATION - HOFSTEDE
+```{r}
+# Transform all Hofstede variables into dummy (high, medium, low levels)
+countries$IDV_class <- as.factor(ifelse(countries$Hofstede_IDV < 50, "Low",
+                               ifelse(countries$Hofstede_IDV > 50, "High", NA)))
+
+countries$UAI_class <- as.factor(ifelse(countries$Hofstede_UAI < 50, "Low",
+                               ifelse(countries$Hofstede_UAI > 50, "High", NA)))
+
+countries$LTO_class <- as.factor(ifelse(countries$Hofstede_LTO < 50, "Low",
+                               ifelse(countries$Hofstede_LTO > 50, "High", NA)))
+
+```
+
+DATA TRANSFORMATION - GDP
+```{r}
+# Create a new variable to represent dummy categories of GDP 
+countries %>%
+  mutate(
+    gdp_level = discretize(gdp_usd, breaks = 3, labels = c("Low", "Medium", "High"))
+  ) -> countries
+
+```
+
+REFORMAT DATA SET COLUMNS & DELETE REMAINING UNECESSARY VARIABLES
+```{r}
+# Delete redundant and unnecessary variables
+countries %>% select(-meat_2020, -meat_2021, -ValueSurvey_Attitudes,
+                     -processed_meat_2020, -processed_meat_2021, -veg_pop_2020,
+                     -veg_pop_2021, -veg_pct_change, -veg_pct_pop_2020, -veg_pct_pop_2021,
+                     -disposable_income_2020, -disposable_income_2021) -> countries
+
+countries %>% select(-expense_meat_2020, -expense_meat_2021, -no_flex, -no_reduce_carbon) -> countries
+
+# Change column positioning
+countries %>% relocate(IDV_class, UAI_class, LTO_class, .after = Hofstede_LTO) -> countries
+countries %>% relocate(gdp_level, .after = gdp_usd) -> countries
+countries %>% relocate(meat_replies, .after = yes_flex) -> countries
+countries %>% relocate(emissions_replies, .after = yes_reduce_carbon) -> countries
+```
+
+
+DESCRIPTIVES
+CORRELATIONS
+PLOTS
+
+
+DESCRIPTIVES TABLE
+```{r}
+# Summary descriptives
+countries %>% psych::describe()
+
+# Make table of summary statistics
+# (population, gdp, flex, reduce carbon, meat change, processed change, DPI change, veg change)
+## Mean, median, sd, min, max
+countries %>%
+  select(Population, gdp_usd, yes_flex, meat_pct_change,
+         processed_pct_change, veg_pct_pop_change) %>%
+  summarise_all(mean) -> stats_table
+
+countries %>%
+  select(Population, gdp_usd, yes_flex, meat_pct_change,
+         processed_pct_change, veg_pct_pop_change) %>%
+  summarise_all(median) -> stats_table_2
+
+countries %>%
+  select(Population, gdp_usd, yes_flex, meat_pct_change,
+         processed_pct_change, veg_pct_pop_change) %>%
+  summarise_all(sd) -> stats_table_3
+
+countries %>%
+  select(Population, gdp_usd, yes_flex, meat_pct_change,
+         processed_pct_change, veg_pct_pop_change) %>%
+  summarise_all(min) -> stats_table_4
+
+countries %>%
+  select(Population, gdp_usd, yes_flex, meat_pct_change,
+         processed_pct_change, veg_pct_pop_change) %>%
+  summarise_all(max) -> stats_table_5
+
+# Combine all stats rows
+bind_rows(stats_table, stats_table_2, stats_table_3, stats_table_4, stats_table_5) -> stats_table
+
+# Reformat table
+rownames(stats_table) <- c("Mean",
+                           "Median",
+                           "SD",
+                           "Min",
+                           "Max")
+
+colnames(stats_table) <- c("Population",
+                           "GDP",
+                           "Flexitarian Respondents (% Total)",
+                           "Meat Consumption % Change",
+                           "Processed Meat Consumption % Change",
+                           "Vegetarians % Change")
+
+formattable(stats_table)
+
+```
+
+FREQUENCIES
+```{r}
+# GDP level frequency
+countries %>% 
+  tabyl(gdp_level) %>%
+  adorn_pct_formatting(digits = 2) %>%
+  adorn_totals()
+
+# Hofstede measures frequencies
+countries %>% 
+  tabyl(IDV_class) %>%
+  adorn_pct_formatting(digits = 2) -> test
+
+countries %>% 
+  tabyl(UAI_class) %>%
+  adorn_pct_formatting(digits = 2)
+
+countries %>% 
+  tabyl(LTO_class) %>%
+  adorn_pct_formatting(digits = 2)
+  
+  
+```
+
+HISTOGRAMS - GROUPING BY CATEGORICAL VARIABLES (GDP LEVEL BY DVS)
+```{r}
+# GDP level on flexitarians
+countries %>%
+  ggplot() + geom_histogram(aes(yes_flex), fill = "#1a6b89", bins = 20) +
+  facet_wrap(gdp_level~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Flexitarian Respondents (%)",
+    y = "Count (Countries)")
+
+# GDP level on reducing carbon emissions
+countries %>%
+  ggplot() + geom_histogram(aes(yes_reduce_carbon), fill = "#1a6b89", bins = 20) +
+  facet_wrap(gdp_level~., scales="free") +
+  theme_classic(base_size = 20) +
+  labs(
+    x = "Carbion-Conscious Respondents (%)",
+    y = "Count (Countries)")
+
+# GDP level on meat consumption change
+countries %>%
+  ggplot() + geom_histogram(aes(meat_pct_change), fill = "#1a6b89", bins = 20) +
+  facet_wrap(gdp_level~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Meat Consumption Change (%)",
+    y = "Count (Countries)")
+
+# GDP level on processed meat consumption change
+countries %>%
+  ggplot() + geom_histogram(aes(processed_pct_change), fill = "#1a6b89", bins = 20) +
+  facet_wrap(gdp_level~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Processed Meat Consumption Change (%)",
+    y = "Count (Countries)")
+
+# GDP level on vegetarians change
+countries %>%
+  ggplot() + geom_histogram(aes(veg_pct_pop_change), fill = "#1a6b89", bins = 15) +
+  facet_wrap(gdp_level~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Change in Vegetarian Population (%)",
+    y = "Count (Countries)")
+ 
+```
+
+HISTOGRAMS - GROUPING BY CATEGORICAL VARIABLES (HOFSTEDE IDV BY DVS)
+```{r}
+# Hofstede IDV on flexitarians
+countries %>%
+  ggplot() + geom_histogram(aes(yes_flex), fill = "#198C57", bins = 25) +
+  facet_wrap(Hofstede_IDV~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Flexitarian Respondents (%)",
+    y = "Count (Countries)")
+
+# Hofstede IDV on reducing carbon emissions
+countries %>%
+  ggplot() + geom_histogram(aes(yes_reduce_carbon), fill = "#198C57", bins = 25) +
+  facet_wrap(Hofstede_IDV~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Carbion-Conscious Respondents (%)",
+    y = "Count (Countries)")
+
+# Hofstede IDV on meat consumption change
+countries %>%
+  ggplot() + geom_histogram(aes(meat_pct_change), fill = "#198C57", bins = 25) +
+  facet_wrap(Hofstede_IDV~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Meat Consumption Change (%)",
+    y = "Count (Countries)")
+
+# Hofstede IDV on processed meat consumption change
+countries %>%
+  ggplot() + geom_histogram(aes(processed_pct_change), fill = "#198C57", bins = 30) +
+  facet_wrap(Hofstede_IDV~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Processed Meat Consumption Change (%)",
+    y = "Count (Countries)")
+
+# Hofstede IDV on vegetarians change
+countries %>%
+  ggplot() + geom_histogram(aes(veg_pct_pop_change), fill = "#198C57", bins = 20) +
+  facet_wrap(Hofstede_IDV~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Change in Vegetarian Population (%)",
+    y = "Count (Countries)")
+
+```
+
+HISTOGRAMS - GROUPING BY CATEGORICAL VARIABLES (HOFSTEDE UAI BY DVS)
+```{r}
+# Hofstede UAI on flexitarians
+countries %>%
+  ggplot() + geom_histogram(aes(yes_flex), fill = "#DD6A60", bins = 25) +
+  facet_wrap(Hofstede_UAI~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Flexitarian Respondents (%)",
+    y = "Count (Countries)")
+
+# Hofstede UAI on reducing carbon emissions
+countries %>%
+  ggplot() + geom_histogram(aes(yes_reduce_carbon), fill = "#DD6A60", bins = 25) +
+  facet_wrap(Hofstede_UAI~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Carbion-Conscious Respondents (%)",
+    y = "Count (Countries)")
+
+# Hofstede UAI on meat consumption change
+countries %>%
+  ggplot() + geom_histogram(aes(meat_pct_change), fill = "#DD6A60", bins = 20) +
+  facet_wrap(Hofstede_UAI~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Meat Consumption Change (%)",
+    y = "Count (Countries)")
+
+# Hofstede UAI on processed meat consumption change
+countries %>%
+  ggplot() + geom_histogram(aes(processed_pct_change), fill = "#DD6A60", bins = 25) +
+  facet_wrap(Hofstede_UAI~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Processed Meat Consumption Change (%)",
+    y = "Count (Countries)")
+
+# Hofstede UAI on vegetarians change
+countries %>%
+  ggplot() + geom_histogram(aes(veg_pct_pop_change), fill = "#DD6A60", bins = 20) +
+  facet_wrap(Hofstede_UAI~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Change in Vegetarian Population (%)",
+    y = "Count (Countries)")
+
+```
+
+HISTOGRAMS - GROUPING BY CATEGORICAL VARIABLES (HOFSTEDE LTO BY DVS)
+```{r}
+# Hofstede LTO on flexitarians
+countries %>%
+  ggplot() + geom_histogram(aes(yes_flex), fill = "#B18D09", bins = 20) +
+  facet_wrap(Hofstede_LTO~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Flexitarian Respondents (%)",
+    y = "Count (Countries)")
+
+# Hofstede LTO on reducing carbon emissions
+countries %>%
+  ggplot() + geom_histogram(aes(yes_reduce_carbon), fill = "#B18D09", bins = 25) +
+  facet_wrap(Hofstede_LTO~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Carbion-Conscious Respondents (%)",
+    y = "Count (Countries)")
+
+# Hofstede LTO on meat consumption change
+countries %>%
+  ggplot() + geom_histogram(aes(meat_pct_change), fill = "#B18D09", bins = 20) +
+  facet_wrap(Hofstede_LTO~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Meat Consumption Change (%)",
+    y = "Count (Countries)")
+
+# Hofstede LTO on processed meat consumption change
+countries %>%
+  ggplot() + geom_histogram(aes(processed_pct_change), fill = "#B18D09", bins = 25) +
+  facet_wrap(Hofstede_LTO~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Processed Meat Consumption Change (%)",
+    y = "Count (Countries)")
+
+# Hofstede LTO on vegetarians change
+countries %>%
+  ggplot() + geom_histogram(aes(veg_pct_pop_change), fill = "#B18D09", bins = 25) +
+  facet_wrap(Hofstede_LTO~., scales="free") +
+  theme_classic(base_size = 18) +
+  labs(
+    x = "Change in Vegetarian Population (%)",
+    y = "Count (Countries)")
+
+```
+
+
+PRELIM CHECK MULTICOLLINEARITY
+```{r}
+# Correlation IVs - GDP, flex
+cor(countries$gdp_usd, countries$yes_flex)
+
+# Correlation IVs - GDP, Hofstede IDV
+cor(countries$gdp_usd, countries$Hofstede_IDV)
+
+# Correlation IVs - GDP, Hofstede UAI
+cor(countries$gdp_usd, countries$Hofstede_UAI)
+
+# Correlation IVs - GDP, Hofstede LTO
+cor(countries$gdp_usd, countries$Hofstede_LTO)
+
+# Correlation IVs - flex, Hofstede IDV
+cor(countries$yes_flex, countries$Hofstede_IDV)
+
+# Correlation IVs - flex, Hofstede UAI
+cor(countries$yes_flex, countries$Hofstede_UAI)
+
+# Correlation IVs - flex, Hofstede LTO
+cor(countries$yes_flex, countries$Hofstede_LTO)
+
+# Correlation IVs - Hofstede IDV, Hofstede UAI
+cor(countries$Hofstede_IDV, countries$Hofstede_UAI)
+
+# Correlation IVs - Hofstede IDV, Hofstede LTO
+cor(countries$Hofstede_IDV, countries$Hofstede_LTO)
+
+# Correlation IVs - Hofstede UAI, Hofstede LTO
+cor(countries$Hofstede_UAI, countries$Hofstede_LTO)
+
+# Correlation IVs - DPI change, flex
+cor(countries$DPI_pct_change, countries$yes_flex)
+
+# Correlation IVs - DPI change, Hofstede IDV
+cor(countries$DPI_pct_change, countries$Hofstede_IDV)
+
+# Correlation IVs - DPI change, Hofstede UAI
+cor(countries$DPI_pct_change, countries$Hofstede_UAI)
+
+# Correlation IVs - DPI change, Hofstede LTO
+cor(countries$DPI_pct_change, countries$Hofstede_LTO)
+
+```
+
+CHECK CORRELATIONS
+```{r}
+# Correlation matrix
+countries %>%
+  select(
+    Hofstede_IDV,
+    Hofstede_UAI,
+    Hofstede_LTO,
+    yes_flex,
+    meat_pct_change,
+    veg_pct_pop_change,
+    processed_pct_change,
+    Population,
+    gdp_usd,
+    yes_reduce_carbon) %>%
+  as.matrix %>% 
+  rcorr() -> corr
+
+corrplot(corr$r, method = "shade", order = "alphabet", type = "lower", addCoef.col = TRUE, tl.srt = 45, tl.pos = "ld")
+```
+
+
+CHECK CORRELATIONS - Flexitarian as IV
+```{r}
+# flex - meat change
+countries %>%
+  ggplot() + geom_point(aes(x = yes_flex, y = meat_pct_change)) +
+  stat_smooth(aes(x = yes_flex, y = meat_pct_change), method = "lm", se = FALSE, size = 1.5, color = "#69b3a2") +
+  labs(
+    x = "Flexitarian Respondents (%)",
+    y = "Meat Consumption Change (%)"
+  ) + theme_minimal(base_size = 16)
+
+# flex - processed meat change
+countries %>%
+  ggplot() + geom_point(aes(x = yes_flex, y = processed_pct_change)) +
+  stat_smooth(aes(x = yes_flex, y = processed_pct_change), method = "lm", se = FALSE, size = 1.5, color = "#486856") +
+  labs(
+    x = "Flexitarian Respondents (%)",
+    y = "Processed Meat Consumption Change (%)"
+  ) + theme_classic(base_size = 15)
+
+# flex - vegetarian pop change
+countries %>%
+  ggplot() + geom_point(aes(x = yes_flex, y = veg_pct_pop_change)) +
+  stat_smooth(aes(x = yes_flex, y = veg_pct_pop_change), method = "lm", se = FALSE, size = 1.5)
+
+
+```
+
+CHECK CORRELATIONS - DPI change as IV
+```{r}
+# DPI change - meat change
+countries %>%
+  ggplot() + geom_point(aes(x = DPI_pct_change, y = meat_pct_change)) +
+  stat_smooth(aes(x = DPI_pct_change, y = meat_pct_change), method = "lm", se = FALSE, size = 1.5)
+
+# DPI change - processed meat change
+countries %>%
+  ggplot() + geom_point(aes(x = DPI_pct_change, y = processed_pct_change)) +
+  stat_smooth(aes(x = DPI_pct_change, y = processed_pct_change), method = "lm", se = FALSE, size = 1.5)
+
+# DPI change - vegetarian pop change
+countries %>%
+  ggplot() + geom_point(aes(x = DPI_pct_change, y = veg_pct_pop_change)) +
+  stat_smooth(aes(x = DPI_pct_change, y = veg_pct_pop_change), method = "lm", se = FALSE, size = 1.5)
+
+```
+
+CHECK CORRELATIONS - Hofstede IDV as IV
+```{r}
+# Hofstede IDV - meat change
+countries %>%
+  ggplot() + geom_point(aes(x = Hofstede_IDV, y = meat_pct_change)) +
+  stat_smooth(aes(x = Hofstede_IDV, y = meat_pct_change), method = "lm", se = FALSE, size = 1.5, color = "#69b3a2") +
+  labs(
+    x = "Hofstede IDV Score",
+    y = "Meat Consumption Change (%)"
+  ) + theme_minimal(base_size = 16)
+
+# Hofstede IDV - processed meat change
+countries %>%
+  ggplot() + geom_point(aes(x = Hofstede_IDV, y = processed_pct_change)) +
+  stat_smooth(aes(x = Hofstede_IDV, y = processed_pct_change), method = "lm", se = FALSE, size = 1.5)
+
+# Hofstede IDV - vegetarian pop change
+countries %>%
+  ggplot() + geom_point(aes(x = Hofstede_IDV, y = veg_pct_pop_change)) +
+  stat_smooth(aes(x = Hofstede_IDV, y = veg_pct_pop_change), method = "lm", se = FALSE, size = 1.5, color = "#69b3a2") +
+  labs(
+    x = "Hofstede IDV Score",
+    y = "Change in Vegetarian Population (%)"
+  ) + theme_minimal(base_size = 16)
+
+```
+
+CHECK CORRELATIONS - Hofstede UAI as IV
+```{r}
+# Hofstede UAI - meat change
+countries %>%
+  ggplot() + geom_point(aes(x = Hofstede_UAI, y = meat_pct_change)) +
+  stat_smooth(aes(x = Hofstede_UAI, y = meat_pct_change), method = "lm", se = FALSE, size = 1.5, color = "#69b3a2") +
+  labs(
+    x = "Hofstede UAI Score",
+    y = "Meat Consumption Change (%)"
+  ) + theme_minimal(base_size = 16)
+
+# Hofstede UAI - processed meat change
+countries %>%
+  ggplot() + geom_point(aes(x = Hofstede_UAI, y = processed_pct_change)) +
+  stat_smooth(aes(x = Hofstede_UAI, y = processed_pct_change), method = "lm", se = FALSE, size = 1.5)
+
+# Hofstede UAI - vegetarian pop change
+countries %>%
+  ggplot() + geom_point(aes(x = Hofstede_UAI, y = veg_pct_pop_change)) +
+  stat_smooth(aes(x = Hofstede_UAI, y = veg_pct_pop_change), method = "lm", se = FALSE, size = 1.5)
+
+```
+
+CHECK CORRELATIONS - Hofstede LTO as IV
+```{r}
+# Hofstede LTO - meat change
+countries %>%
+  ggplot() + geom_point(aes(x = Hofstede_LTO, y = meat_pct_change)) +
+  stat_smooth(aes(x = Hofstede_LTO, y = meat_pct_change), method = "lm", se = FALSE, size = 1.5, color = "#69b3a2") +
+  labs(
+    x = "Hofstede LTO Score",
+    y = "Meat Consumption Change (%)"
+  ) + theme_minimal(base_size = 16)
+
+
+# Hofstede LTO - processed meat change
+countries %>%
+  ggplot() + geom_point(aes(x = Hofstede_LTO, y = processed_pct_change)) +
+  stat_smooth(aes(x = Hofstede_LTO, y = processed_pct_change), method = "lm", se = FALSE, size = 1.5) +
+  labs(
+    x = "Hofstede LTO Score",
+    y = "Processed Meat Consumption Change (%)"
+  ) + theme_classic(base_size = 18)
+
+# Hofstede LTO - vegetarian pop change
+countries %>%
+  ggplot() + geom_point(aes(x = Hofstede_LTO, y = veg_pct_pop_change)) +
+  stat_smooth(aes(x = Hofstede_LTO, y = veg_pct_pop_change), method = "lm", se = FALSE, size = 1.5)
+
+```
+
+CHECK CORRELATIONS - GROUPED BY CATEGORIES
+```{r}
+# Hofstede IDV - meat change (grouped by GDP level)
+countries %>%
+  ggplot() + geom_point(aes(x = Hofstede_IDV, y = meat_pct_change, color = gdp_level), size = 3) +
+  labs(
+    x = "Hofstede IDV Score",
+    y = "Meat Consumption Change (%)"
+  ) + theme_classic(base_size = 18)
+
+# Hofstede LTO - meat change (grouped by GDP level)
+countries %>%
+  ggplot() + geom_point(aes(x = Hofstede_LTO, y = meat_pct_change, color = gdp_level), size = 3) +
+  labs(
+    x = "Hofstede LTO Score",
+    y = "Meat Consumption Change (%)"
+  ) + theme_classic(base_size = 18)
+
+# Hofstede LTO - processed meat change (grouped by GDP level)
+countries %>%
+  ggplot() + geom_point(aes(x = Hofstede_LTO, y = processed_pct_change, color = gdp_level), size = 3) +
+  labs(
+    x = "Hofstede LTO Score",
+    y = "Processed Meat Consumption Change (%)"
+  ) + theme_classic(base_size = 18)
+```
+
+SCATTERPLOT - FLEX ON MEAT (GROUPED BY LTO)
+```{r}
+ggplot(countries, aes(yes_flex, meat_pct_change, color = LTO_class)) +
+  geom_point(aes(color = LTO_class)) +
+  stat_smooth(aes(group = LTO_class), method = "lm") +
+  labs(
+    x = "Flexitarian Respondents (%)",
+    y = "Meat Consumption Change (%)"
+  ) + theme_minimal(base_size = 16)
+
+
+```
+
+EXPORT NEW CSV FILE (WITH NEW VARIABLES)
+```{r}
+write.csv(countries, "/Users/angelchang/Desktop/VU/Master/P4/Modeling/Week 3/Assignment/country_final.csv", row.names=FALSE)
+
+```
+
+
